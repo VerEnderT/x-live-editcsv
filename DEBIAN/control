@@ -1,0 +1,12 @@
+Package: x-live-editcsv
+Version: 0.0.1
+Depends: python3, python3-pyqt5
+Maintainer: VerEnderT <chaosz932@gmail.com>
+Architecture: all
+Homepage: http://github.com/verendert
+Section: utils
+Priority: optional
+Description: Einfache Tabellen erstellen und verwalten
+ Deutsch: ->>
+ Einfache Tabellen erstellen und verwalten.
+

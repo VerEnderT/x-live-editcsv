@@ -1,0 +1,3 @@
+#!/bin/bash
+
+python3 /usr/share/x-live/editcsv/editcsv.py

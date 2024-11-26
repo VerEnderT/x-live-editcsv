@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=0.0.1
+Type=Application
+Name=X-Live EditCSV
+Exec=x-live-editcsv
+Icon=x-live-editcsv
+Categories=Utility;Office;
+Keywords=csv,edit,editor,x-live
+StartupNotify=true
+X-GNOME-UsesNotifications=true
+GenericName=CSV-Editor
