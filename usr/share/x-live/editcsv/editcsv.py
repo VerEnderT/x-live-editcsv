@@ -2,6 +2,7 @@
 
 import sys
 import csv
+import re
 import os
 import subprocess
 from datetime import datetime
@@ -82,10 +83,26 @@ class CSVEditor(QMainWindow):
         self.search_field = QLineEdit()
         self.search_field.setPlaceholderText("darf enthalten...")
         self.search_field.textChanged.connect(self.search_table)
+        # Tooltip für das Filter-Feld mit einem Beispiel
+        self.search_field.setToolTip(
+            "Gib ein oder mehrere Filterbegriffe ein.\n"
+            "Verwende Leerzeichen, um mehrere Begriffe zu trennen (z.B. 'linux mint ubuntu').\n"
+            "Verwende Anführungszeichen (\"), um einen zusammenhängenden Filterbegriff zu suchen (z.B. \"linux mint\").\n"
+            "Aktiviere die Checkbox, um Begriffe auszuschließen.\n"
+            "Wenn das Filterfeld leer ist, wird nur der Ausschlussfilter angewendet."
+        )
         self.search_field_ex = QLineEdit()
         self.search_field_ex.setPlaceholderText("darf nicht enthalten...")
         self.search_field_ex.textChanged.connect(self.search_table)
         self.search_field_ex.hide()
+        # Tooltip für das Filter-Feld mit einem Beispiel
+        self.search_field_ex.setToolTip(
+            "Gib ein oder mehrere Filterbegriffe ein.\n"
+            "Verwende Leerzeichen, um mehrere Begriffe zu trennen (z.B. 'linux mint ubuntu').\n"
+            "Verwende Anführungszeichen (\"), um einen zusammenhängenden Filterbegriff zu suchen (z.B. \"linux mint\").\n"
+            "Aktiviere die Checkbox, um Begriffe auszuschließen.\n"
+            "Wenn das Filterfeld leer ist, wird nur der Ausschlussfilter angewendet."
+        )
         self.search_revbox = QCheckBox("mehr filter")               
         self.search_revbox.stateChanged.connect(self.search_table_ex)
 
@@ -94,6 +111,7 @@ class CSVEditor(QMainWindow):
         self.table = QTableWidget()
         self.table.setColumnCount(len(self.header_data))
         self.table.setHorizontalHeaderLabels(self.header_data)
+
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         # Einfaches Eintrag bearbeiten unterbinden
         self.table.cellDoubleClicked.connect(self.edit_entry)
@@ -106,6 +124,8 @@ class CSVEditor(QMainWindow):
         # **Spaltenbreite automatisch anpassen**
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.Stretch)
+        # Header-Klick umleiten
+        header.sectionClicked.connect(self.edit_header)
 
         # Buttons
         self.add_button = QPushButton("neue Zeile")
@@ -122,8 +142,8 @@ class CSVEditor(QMainWindow):
         
         self.layout.addLayout(line_top_layout)
         self.layout.addWidget(self.table)
-
-        self.data = []       
+        self.data = []     
+        self.background_color()  
         QTimer.singleShot(50,self.table_resize)
         
     def table_resize(self):
@@ -266,26 +286,58 @@ class CSVEditor(QMainWindow):
         
         self.update_table()
         
-    def search_table(self):
-        search_text = self.search_field.text().lower()
-        exclude_text = self.search_field_ex.text().lower()  # Der zusätzliche Filter
         
+    def search_table(self):
+        # Hol die Suchbegriffe und teile sie in einzelne Wörter
+        search_text = self.search_field.text().lower().strip()
+        search_terms = []
+
+        # Wenn die Eingabe Anführungszeichen enthält, behandle diese als zusammenhängende Begriffe
+        if '"' in search_text:
+            import re
+            # Finde Wörter in Anführungszeichen und normale Wörter
+            search_terms = re.findall(r'"(.*?)"|(\S+)', search_text)
+            search_terms = [term[0] or term[1] for term in search_terms]  # Kombiniere Treffer
+        else:
+            search_terms = search_text.split() if search_text else []  # Normale Trennung bei Leerzeichen
+
+        # Hol die Ausschlussbegriffe und teile sie in einzelne Wörter
+        exclude_text = self.search_field_ex.text().lower().strip()
+        exclude_terms = []
+
+        # Wenn die Ausschlussbegriffe Anführungszeichen enthalten, behandle diese ebenfalls als zusammenhängende Begriffe
+        if '"' in exclude_text:
+            exclude_terms = re.findall(r'"(.*?)"|(\S+)', exclude_text)
+            exclude_terms = [term[0] or term[1] for term in exclude_terms]  # Kombiniere Treffer
+        else:
+            exclude_terms = exclude_text.split() if exclude_text else []  # Normale Trennung bei Leerzeichen
+
         for row in range(self.table.rowCount()):
-            # Überprüfe, ob der Text im Suchfeld vorhanden ist
-            match = any(
-                search_text in self.table.item(row, col).text().lower() for col in range(self.table.columnCount())
-            )
-            
-            # Wenn die CheckBox aktiviert ist, überprüfe den Ausschlussfilter
-            if self.search_revbox.isChecked() and exclude_text != "":
+            # Wenn die Suchleiste leer ist, keine Suche durchführen, aber den Ausschluss-Filter weiterhin berücksichtigen
+            if not search_terms:
+                match = True  # Alle Zeilen anzeigen, weil keine Suche aktiv ist
+            else:
+                # Überprüfe, ob irgendein Suchbegriff in einer der Zellen vorhanden ist
+                match = any(
+                    any(term in self.table.item(row, col).text().lower() for term in search_terms)
+                    for col in range(self.table.columnCount())
+                )
+
+            # Wenn die Ausschluss-Checkbox aktiviert ist, überprüfe, ob irgendein Ausschlussbegriff vorhanden ist
+            if self.search_revbox.isChecked() and exclude_terms:
                 exclude_match = any(
-                    exclude_text in self.table.item(row, col).text().lower() for col in range(self.table.columnCount())
+                    any(term in self.table.item(row, col).text().lower() for term in exclude_terms)
+                    for col in range(self.table.columnCount())
                 )
             else:
-                exclude_match = False  # Wenn nicht aktiviert, keine Ausschlussprüfung
+                exclude_match = False  # Keine Ausschlussprüfung, wenn die Checkbox nicht aktiviert ist
 
-            # Zeile ausblenden, wenn sie im Ausschlussfilter ist oder das Suchkriterium nicht erfüllt
+            # Zeile ausblenden, wenn sie im Ausschlussfilter ist oder kein Suchbegriff gefunden wurde
             self.table.setRowHidden(row, not match or exclude_match)
+
+       
+       
+   
           
     def search_table_ex(self):
         print("test")
@@ -404,6 +456,169 @@ class CSVEditor(QMainWindow):
         except Exception as e:
             print(f"Fehler beim Abrufen der Version: {e}")
         return "Unbekannt"
+
+
+    # Farbprofil abrufen und anwenden
+    def get_current_theme(self):
+        try:
+            # Versuche, das Theme mit xfconf-query abzurufen
+            result = subprocess.run(['xfconf-query', '-c', 'xsettings', '-p', '/Net/ThemeName'], capture_output=True, text=True)
+            theme_name = result.stdout.strip()
+            if theme_name:
+                return theme_name
+        except FileNotFoundError:
+            print("xfconf-query nicht gefunden. Versuche gsettings.")
+        except Exception as e:
+            print(f"Error getting theme with xfconf-query: {e}")
+        try:
+            # Fallback auf gsettings, falls xfconf-query nicht vorhanden ist
+            result = subprocess.run(['gsettings', 'get', 'org.gnome.desktop.interface', 'gtk-theme'], capture_output=True, text=True)
+            theme_name = result.stdout.strip().strip("'")
+            if theme_name:
+                print("gsettings",theme_name)
+                return theme_name
+        except Exception as e:
+            print(f"Error getting theme with gsettings: {e}")
+    
+        return None
+
+    def extract_color_from_css(self,css_file_path, color_name):
+        try:
+            with open(css_file_path, 'r', encoding='utf-8') as file:
+                content = file.read()
+                #print(content)
+                # Muster zum Finden der Farbe
+                pattern = r'{}[\s:]+([#\w]+)'.format(re.escape(color_name))
+                match = re.search(pattern, content)
+                if match:
+                    return match.group(1)
+                return None
+        except IOError as e:
+            print(f"Error reading file: {e}")
+            return None
+            
+            
+    def background_color(self):
+        theme_name = self.get_current_theme()
+        #print("bg_color",theme_name)
+        if theme_name:
+            # Pfad zur GTK-CSS-Datei des aktuellen Themes
+            css_file_path = f'/usr/share/themes/{theme_name}/gtk-3.0/gtk.css'
+            if os.path.exists(css_file_path):
+                bcolor = self.extract_color_from_css(css_file_path, ' background-color')
+                color = self.extract_color_from_css(css_file_path, ' color')
+                if bcolor:
+                    if bcolor.startswith("rgba") == False:
+                        self.setStyleSheet("""
+                                    QPushButton {
+                                        color: """ + color + """;  /* Farbe */
+                                        background-color: """ + bcolor + """;    /* Hintergrundfarbe  */
+
+                                    }
+                                    QPushButton::hover {
+                                        color: """ + bcolor + """;  /* Farbe */
+                                        background-color: """ + color + """;    /* Hintergrundfarbe  */
+
+                                    }
+
+                                    QMenu {
+                                        color: """ + bcolor + """;  /* Farbe */
+                                        background-color: """ + color + """;    /* Hintergrundfarbe  */
+                                        border: 3px solid """ + bcolor + """; /* Rahmen */
+                                        border-radius: 3px;
+                                    }
+                                    QMenu::item {
+                                        padding: 2px 8px;        /* Innenabstand */
+                                        margin: 0px;             /* Abstand zwischen Items */
+                                    }
+                                    QMenu::item:disabled {
+                                        color: #20""" + color.replace('#','') + """;  /* Farbe */
+                                        background-color: """ + bcolor + """;    /* Hintergrundfarbe  */
+                                    }
+                                    QMenu::item:selected {       /* Hover-Effekt */
+                                        color: """ + bcolor + """;  /* Farbe */
+                                        background-color: """ + color + """;    /* Hintergrundfarbe  */
+                                    }
+                                    QMenu::separator {
+                                        height: 2px;
+                                        background: """ + color + """;
+                                        margin: 2px 2px;
+                                    }
+                                    QWidget {
+                                        color: """ + color + """;  /* Farbe */
+                                        background-color: """ + bcolor + """;    /* Hintergrundfarbe  */
+
+                                    }
+                                    QTextEdit {
+                                        color: """ + bcolor + """;  /* Farbe */
+                                        border-color: """ + color + """; /* Rahmenfarbe */
+                                        background-color: """ + color + """;    /* Hintergrundfarbe  */
+                                        border-radius: 5px; /* abgerundete Ecken */
+
+                                    }
+                                """)
+                    else:
+                        self.setStyleSheet("""
+
+                                    QMenu {
+                                        border: 3px; /* Rahmen */
+                                        border-radius: 3px;
+                                    }
+                                    QMenu::item {
+                                        padding: 2px 8px;        /* Innenabstand */
+                                        margin: 0px;             /* Abstand zwischen Items */
+                                    }
+                                    }
+                                    QMenu::separator {
+                                        height: 2px;
+                                        margin: 2px 2px;
+                                    }
+                                    QTextEdit {
+                                        border-radius: 5px; /* abgerundete Ecken */
+                                    }
+                                """)
+            else:
+                print(f"CSS file not found: {css_file_path}")
+                self.setStyleSheet("""
+
+                            QMenu {
+                                border: 3px; /* Rahmen */
+                                border-radius: 3px;
+                            }
+                            QMenu::item {
+                                padding: 2px 8px;        /* Innenabstand */
+                                margin: 0px;             /* Abstand zwischen Items */
+                            }
+                            }
+                            QMenu::separator {
+                                height: 2px;
+                                margin: 2px 2px;
+                            }
+                            QTextEdit {
+                                border-radius: 5px; /* abgerundete Ecken */
+                            }
+                        """)
+        else:
+            print("Unable to determine the current theme.")
+            self.setStyleSheet("""
+
+                        QMenu {
+                            border: 3px; /* Rahmen */
+                            border-radius: 3px;
+                        }
+                        QMenu::item {
+                            padding: 2px 8px;        /* Innenabstand */
+                            margin: 0px;             /* Abstand zwischen Items */
+                        }
+                        }
+                        QMenu::separator {
+                            height: 2px;
+                            margin: 2px 2px;
+                        }
+                        QTextEdit {
+                            border-radius: 5px; /* abgerundete Ecken */
+                        }
+                    """)
 
 
 
@@ -610,6 +825,9 @@ class PrintDialog(QDialog):
             # Text in die Zwischenablage kopieren
             clipboard.setText(self.fulltext)
             QMessageBox.information(self, "Erfolg", "Daten in Zischenablage kopiert!")
+
+
+
 
 
 
