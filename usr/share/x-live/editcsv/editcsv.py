@@ -16,7 +16,7 @@ from PyQt5.QtCore import Qt, QTimer, QPoint
 from PyQt5.QtGui import QResizeEvent, QIntValidator, QClipboard, QIcon
 
 class CSVEditor(QMainWindow):
-    def __init__(self):
+    def __init__(self, file_path=None):
         super().__init__()
         self.setWindowTitle("X-Live EditCSV")
         self.setWindowIcon(QIcon("/usr/share/pixmaps/x-live-editcsv.png"))
@@ -38,7 +38,7 @@ class CSVEditor(QMainWindow):
 
         # Aktionen für das Menü - Datei 
         open_action = QAction("Öffnen", self)
-        open_action.triggered.connect(self.load_csv)
+        open_action.triggered.connect(self.open_csv)
         save_action = QAction("speichern", self)
         save_action.triggered.connect(self.save_csv)
         exit_action = QAction("Beenden", self)
@@ -145,6 +145,10 @@ class CSVEditor(QMainWindow):
         self.data = []     
         self.background_color()  
         QTimer.singleShot(50,self.table_resize)
+        if file_path:
+            print(file_path)
+            self.load_csv(file_path)
+
         
     def table_resize(self):
         self.set_column_widths(self.tab_size)
@@ -163,8 +167,11 @@ class CSVEditor(QMainWindow):
         super().resizeEvent(event)
 
 
-    def load_csv(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "CSV-Datei auswählen", "", "CSV-Dateien (*.csv)")
+    def open_csv(self):
+        file_path, _ = QFileDialog.getOpenFileName(self, "CSV-Datei auswählen", "", "X-CSV-Dateien(*.xcsv);;CSV-Dateien (*.csv);;Alle Dateien (*)")
+        self.load_csv(file_path)
+
+    def load_csv(self,file_path):
         x = file_path.split("/")[-1]
         self.setWindowTitle(f"X-Live EditCSV - {x}")
         if file_path:
@@ -194,9 +201,9 @@ class CSVEditor(QMainWindow):
         QTimer.singleShot(50,self.table_resize)
 
     def save_csv(self):
-        file_path, _ = QFileDialog.getSaveFileName(self, "CSV-Datei speichern", "", "CSV-Dateien (*.csv)")
-        if not file_path.endswith(".csv"):
-            file_path=file_path +".csv"
+        file_path, _ = QFileDialog.getSaveFileName(self, "Datei speichern", "", "X-CSV-Dateien (*.xcsv);;CSV-Dateien (*.csv)")
+        if not "." in file_path:
+            file_path=file_path +".xcsv"
         if file_path:
             try:
                 with open(file_path, mode='w', newline='', encoding='utf-8') as csv_file:
@@ -335,10 +342,6 @@ class CSVEditor(QMainWindow):
             # Zeile ausblenden, wenn sie im Ausschlussfilter ist oder kein Suchbegriff gefunden wurde
             self.table.setRowHidden(row, not match or exclude_match)
 
-       
-       
-   
-          
     def search_table_ex(self):
         print("test")
         if self.search_revbox.isChecked():
@@ -366,10 +369,8 @@ class CSVEditor(QMainWindow):
             text.append(", ".join(row))
         fulltext = "\n".join(text)
         total_width = self.table.viewport().width()
-        
         PrintDialog(self,fulltext,total_width).exec_()  
         
-    
     def open_context_menu(self, position: QPoint):
         """
         Kontextmenü bei Rechtsklick öffnen.
@@ -386,12 +387,10 @@ class CSVEditor(QMainWindow):
         menu = QMenu(self)
 
         # Menüoptionen hinzufügen
-         
         action_add = menu.addAction("Neu Zeile hinzufügen")
         action_edit = menu.addAction("Zeile bearbeit")
         action_delete = menu.addAction("Zeile(n) löschen")
         action_print = menu.addAction("Zeile(n) Ausgeben")
-        
 
         # Kontextmenü anzeigen
         action = menu.exec_(self.table.viewport().mapToGlobal(position))
@@ -406,11 +405,9 @@ class CSVEditor(QMainWindow):
         elif action == action_print:
             self.print_data()  # Zeilen ausgebenen
 
-
     # Ermittlung der Benutzersprache
     def get_user_language(self):
         return os.environ.get('LANG', 'en_US')
-
 
     def show_about_dialog(self):
         # Extrahiere die Version aus der Versionsermittlungsfunktion
@@ -457,7 +454,6 @@ class CSVEditor(QMainWindow):
             print(f"Fehler beim Abrufen der Version: {e}")
         return "Unbekannt"
 
-
     # Farbprofil abrufen und anwenden
     def get_current_theme(self):
         try:
@@ -479,7 +475,6 @@ class CSVEditor(QMainWindow):
                 return theme_name
         except Exception as e:
             print(f"Error getting theme with gsettings: {e}")
-    
         return None
 
     def extract_color_from_css(self,css_file_path, color_name):
@@ -619,10 +614,6 @@ class CSVEditor(QMainWindow):
                             border-radius: 5px; /* abgerundete Ecken */
                         }
                     """)
-
-
-
-
 
 class EditDialog(QDialog):
     def __init__(self, parent, row_data, header_data,text):
@@ -826,14 +817,10 @@ class PrintDialog(QDialog):
             clipboard.setText(self.fulltext)
             QMessageBox.information(self, "Erfolg", "Daten in Zischenablage kopiert!")
 
-
-
-
-
-
-
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    window = CSVEditor()
+    file_path = sys.argv[1] if len(sys.argv) > 1 else None
+    window = CSVEditor(file_path=file_path)
     window.show()
     sys.exit(app.exec_())
+
